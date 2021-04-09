@@ -3,22 +3,22 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.model_selection import GroupKFold
 
+
+transformer = PCA()
 # so this is the basic building block
 # the rest of the functions or classes that will be included in the module
 # will probably interact with this class somehow.
-class BBS:
+class BasisBrainSet:
     """receives train and test data, to create bbs features ....."""
-    def __init__(self, num_comps: int):
-        self.num_comps = num_comps
-
-        self.components = np.array
-        self.train_features = np.array
-        self.test_features = np.array
+    def __init__(self, num_components: int):
+        self.num_components = num_components
+        self.components: np.array
+        self.train_features: np.array
+        self.test_features: np.array
 
     def _decompose(self, data):
-        transformer = PCA()
         transformer.fit(data)
-        self.components = transformer.components_.T[:, :self.num_comps]
+        self.components = transformer.components_.T[:, :self.num_components]
 
     def extract_features(self, train_data, test_data):
         self._decompose(train_data) # is this legit?
@@ -34,20 +34,24 @@ class BBS:
 # im specifically disoriented as to the manner in which the BBS class should be used here:
 # should it inherit its properties and expand on them? or should it use an instance of it..
 # i started going down the inheritance road but fast enough i got confused.
-class BBSPredictSingle(BBS):
-    def __init__(self, num_comps:int, data:pd.DataFrame, target, folds:int, groups=None):
-        BBS.__init__(self, num_comps)
+class BBSPredictSingle(BasisBrainSet):
+    def __init__(self, num_components:int, data:pd.DataFrame, target, folds:int, groups=None):
+        BasisBrainSet.__init__(self, num_components)
         self.data = data
         self.target = target
         self.splitter = GroupKFold(n_splits=folds)
         self.groups = groups
 
-        self.coefs = np.array
-        self.predicted = np.aray
-
+        self.coefs: np.array
+        self.predicted: np.aray
+        
+    def extract_features(self, train_data, test_data):
+        return super().extract_features(train_data, test_data)
+    
     def predict(self):
-        for train_index, test_index in self.splitter.split(self.data, self.target, self.groups):
-            ...
+        for train_arr, test_arr in self.splitter.split(self.data, self.target, self.groups):
+            bbs = BasisBrainSet()
+            
 
 # further functions/classes/stuff in this module would be another kind of prediction\classification process,
 # similar to "BBSPredictSingle" but with some changes or added steps. these should have a similar API
