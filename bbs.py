@@ -4,64 +4,41 @@ from sklearn.decomposition import PCA
 from sklearn.model_selection import GroupKFold
 from typing import Optional, Iterable, Any
 from collections import namedtuple
+from sklearn.linear_model import LinearRegression, ElasticNetCV
+from scipy.stats import pearsonr
 
+glm = LinearRegression()
+elastic = ElasticNetCV()
 Features = namedtuple('Features', ['train_features', 'test_features'])
-
 transformer = PCA()
 
 
 def decompose(training_data, num_components: int) -> np.array:
+    """do docstring"""
     transformer.fit(training_data)
     components = transformer.components_.T[:, :num_components]
     return components
 
 
 def extract_features(train_data, test_data, components) -> Features:
+    """do docstring"""
     train_features = np.matmul(np.linalg.pinv(components), train_data.values.T).T
     test_features = np.matmul(np.linalg.pinv(components), test_data.values.T).T
     return Features(train_features, test_features)
 
 
-# so this is the basic building block
-# the rest of the functions or classes that will be included in the module
-# will probably interact with this class somehow.
-# class BasisBrainSet:
-#     """receives train and test data, to create bbs features ....."""
-#     num_components: int
-#     components: Optional[np.array]
-#     train_features: Optional[np.array]
-#     test_features: Optional[np.array]
-#
-#     def __init__(self, num_components: int):
-#         self.num_components = num_components
-#         self.components: np.array = None
-#         self.train_features: np.array = None
-#         self.test_features: np.array = None
-
-
-# the idea here was to create a class that uses the BBS class for feature extraction
-# and wraps it in the whole prediction process:
-# a k-fold cross-validation process, where in each iteration we (1) extract features
-# (2) fit a model to predict some target measure, and (3) save some parameters from steps 1+2
-
-# im specifically disoriented as to the manner in which the BBS class should be used here:
-# should it inherit its properties and expand on them? or should it use an instance of it..
-# i started going down the inheritance road but fast enough i got confused.
 class BBSPredictSingle:
-    """
-    This class is built from science stuff, and used to predict and display data.
-    Used in this and that module.
-    """
+    """do docstring"""
     data: pd.DataFrame
     target: Iterable
-    splitter: Any
     groups: Iterable
-    coefs: np.array
+
+    coefs: list
+    components: list
     predicted: np.array
-    
-    def __init__(self, num_components: int, data: pd.DataFrame, target: Iterable, folds: int, groups: Iterable = None):
+
+    def __init__(self, num_components: int, data: pd.DataFrame, target: Iterable, folds: int, groups: Iterable = None, model = glm):
         """
-        Lol
         :param num_components: hi hi
         :param data:
         :param target:
@@ -72,14 +49,32 @@ class BBSPredictSingle:
         self.target = target
         self.splitter = GroupKFold(n_splits=folds)
         self.groups = groups
+        self.num_components = num_components
+        self.model=model
+        # perhaps add some test (e.g.,if data, target and groups have the same number of observations)
+
+        self.coefs = []
+        self.features=[]
+        self.components = []
+        self.predicted = np.zeros(data.shape[0])
+        self.scores_ = []
     
     def predict(self):
-        """
-        Doees blabla and return this
-        :return:
-        """
-        for train_arr, test_arr in self.splitter.split(self.data, self.target, self.groups):
-            ...
+        """do docstring"""
+        for fold, (train_arr, test_arr) in enumerate(self.splitter.split(self.data, self.target, self.groups)):
+            # get relevent data slices for train-test split
+            X_train, X_test = self.data.iloc[train_arr, :], self.data.iloc[test_arr, :]
+            Y_train, Y_test = self.target[train_arr], self.target[test_arr]
+            # extract features
+            self.components.append(decompose(X_train, self.num_components))
+            self.features.append(extract_features(X_train, X_test, self.components[fold]))
+            # fit, predict and assess
+            self.model.fit(self.features[fold].train_features, Y_train)
+            self.predicted[test_arr] = self.model.predict(X_test)
+            self.scores_.append(pearsonr(Y_test, self.predicted[test_arr])[0])
+
+
+
             
             
 # further functions/classes/stuff in this module would be another kind of prediction\classification process,
