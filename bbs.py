@@ -2,14 +2,18 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.model_selection import GroupKFold
+from sklearn.linear_model import LinearRegression, ElasticNetCV
+from sklearn.metrics import mean_squared_error
 from typing import Optional, Iterable, Any
 from collections import namedtuple
-from sklearn.linear_model import LinearRegression, ElasticNetCV
 from scipy.stats import pearsonr
+
 
 glm = LinearRegression()
 elastic = ElasticNetCV()
 Features = namedtuple('Features', ['train_features', 'test_features'])
+Splits = namedtuple('Features', ['train_indices', 'test_indices'])
+
 transformer = PCA()
 
 
@@ -54,30 +58,40 @@ class BBSPredictSingle:
         # perhaps add some test (e.g.,if data, target and groups have the same number of observations)
 
         self.coefs = []
-        self.features=[]
+        self.splits_ = []
+        self.features = []
         self.components = []
         self.predicted = np.zeros(data.shape[0])
-        self.scores_ = []
+        self.stats = None # pearson r and mse for each iteration
+        self.summary = None # mean and std for pearsons r and mse across folds
+
     
     def predict(self):
         """do docstring"""
-        for fold, (train_arr, test_arr) in enumerate(self.splitter.split(self.data, self.target, self.groups)):
+        for fold, (train_indices, test_indices) in enumerate(self.splitter.split(self.data, self.target, self.groups)):
+            self.splits_.append(Splits(train_indices, test_indices))
             # get relevent data slices for train-test split
-            X_train, X_test = self.data.iloc[train_arr, :], self.data.iloc[test_arr, :]
-            Y_train, Y_test = self.target[train_arr], self.target[test_arr]
+            X_train, X_test = self.data.iloc[train_indices, :], self.data.iloc[test_indices, :]
+            Y_train, Y_test = self.target[train_indices], self.target[test_indices]
             # extract features
             self.components.append(decompose(X_train, self.num_components))
             self.features.append(extract_features(X_train, X_test, self.components[fold]))
-            # fit, predict and assess
+            # fit and predict
             self.model.fit(self.features[fold].train_features, Y_train)
-            self.predicted[test_arr] = self.model.predict(X_test)
-            self.scores_.append(pearsonr(Y_test, self.predicted[test_arr])[0])
+            self.predicted[test_indices] = self.model.predict(X_test)
 
+        # i want to asses the prediction accuracy, which will be done by calc_stats method.
+        # is this a good pythonic way to make sure stats are calculated after the prediction process is done?
+        self.calc_stats(self)
 
-
-            
-            
-# further functions/classes/stuff in this module would be another kind of prediction\classification process,
-# similar to "BBSPredictSingle" but with some changes or added steps. these should have a similar API
-# i would also want to have some function/class to wrap the prediction functions to perform
-# a permutation test (doesnt really matter what it is, just that it needs to use the various prediction objects
+    def calc_stats(self):
+        # this is a method i would want to run after self.predict() finished running
+        # it should put values in self.stats and self.summary
+        stats = {'r': [], 'mse': []}
+        for fold in self.splits_:
+            real_vals = self.target[fold.test_indices]
+            pred_vals = self.predicted[fold.test_indices]
+            stats['r'].append(pearsonr(real_vals, pred_vals)[0])
+            stats['mse'].append(mean_squared_error(real_vals, pred_vals))
+        self.stats = pd.DataFrame(stats)
+        self.summary = self.stats.describe().loc[['mean', 'std'], :]
