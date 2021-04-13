@@ -21,7 +21,7 @@ def decompose(training_data, num_components: int) -> np.array:
     return components
 
 
-def extract_features(train_data, test_data, components) -> Features:
+def extract_features(train_data, test_data, components):
     """do docstring"""
     train_features = np.matmul(np.linalg.pinv(components), train_data.values.T).T
     test_features = np.matmul(np.linalg.pinv(components), test_data.values.T).T
@@ -49,12 +49,16 @@ class BBSPredictSingle:
         self.data = data
         self.target = target
         self.splitter = GroupKFold(n_splits=folds)
-        self.groups = groups
         self.num_components = num_components
         self.model = model
         # TODO: perhaps add some test
         #  (e.g.,if data, target and groups have the same number of observations)
 
+        # this should probably be done differently?
+        if groups == None:
+            self.groups = np.arange(data.shape[0]) # each subject is a group, i.e, no grouping constrains on the splitter
+        else:
+            self.groups = groups
         self.coefs = []
         self.splits_ = {'train':[], 'test':[]}
         self.features = {'train':[], 'test':[]}
@@ -133,10 +137,11 @@ class BBSPredictSingle:
             y_train = self.target[self.splits_['train'][fold]].copy()
             train_features = self.features['train'][fold]
             test_features = self.features['test'][fold]
-            for perm in permutation_num:
+            for perm in range(permutation_num):
                 np.random.shuffle(y_train)
                 self.model.fit(train_features, y_train)
                 permutations[self.splits_['test'][fold], perm] = self.model.predict(test_features)
 
         self.permutations_ = permutations
         return self.get_permutations_pvalue()
+
