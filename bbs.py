@@ -5,8 +5,8 @@ from sklearn.model_selection import GroupKFold
 from sklearn.linear_model import LinearRegression, ElasticNetCV
 from sklearn.metrics import mean_squared_error
 from typing import Optional, Iterable, Any
-from collections import namedtuple
 from scipy.stats import pearsonr
+import warnings
 
 
 glm = LinearRegression()
@@ -51,14 +51,15 @@ class BBSPredictSingle:
         self.splitter = GroupKFold(n_splits=folds)
         self.num_components = num_components
         self.model = model
-        # TODO: perhaps add some test
-        #  (e.g.,if data, target and groups have the same number of observations)
-
         # this should probably be done differently?
         if groups == None:
             self.groups = np.arange(data.shape[0]) # each subject is a group, i.e, no grouping constrains on the splitter
         else:
             self.groups = groups
+
+        # gilad what do you think about this? is this good practice?
+        self._validate_inputs()
+
         self.coefs = []
         self.splits_ = {'train':[], 'test':[]}
         self.features = {'train':[], 'test':[]}
@@ -69,6 +70,14 @@ class BBSPredictSingle:
         self.summary = None # mean and std for pearsons r and mse across folds
         self.contribution_map = None
         self.permutations_ = None
+
+    def _validate_inputs(self):
+        if self.data.shape[0] != len(self.target):
+            warnings.warn("number of samples in data and target is not the same. please check your data.")
+        if self.data.shape[0] != len(self.groups):
+            warnings.warn("number of samples in data and 'groups' is not the same. please check your data.")
+        if self.num_components > self.data.shape[0]:
+            warnings.warn("requested number of components is larger than sample size. will result in error during pca")
 
     def predict(self):
         """do docstring"""
@@ -97,6 +106,7 @@ class BBSPredictSingle:
         self.build_contribution_map()
 
     def calc_stats(self):
+        """do docstring"""
         # this is a method i would want to run after self.predict() finished running
         # it should put values in self.stats and self.summary
         stats = {'r': [], 'mse': []}
@@ -109,6 +119,7 @@ class BBSPredictSingle:
         self.summary = self.stats.describe().loc[['mean', 'std'], :]
 
     def build_contribution_map(self):
+        """do docstring"""
         contribution_map = np.zeros((self.data.shape[1]))
         for fold in range(self.splitter.n_splits):
             # weight components with their related beta values
@@ -120,6 +131,7 @@ class BBSPredictSingle:
         self.contribution_map = contribution_map
 
     def get_permutations_pvalue(self):
+        """do docstring"""
         n_perm = self.permutations_.shape[1]
         r_perm = np.zeros(n_perm)
         for perm in range(n_perm):
@@ -131,7 +143,10 @@ class BBSPredictSingle:
         return (np.sum(r_perm >= r_real) + 1) / (n_perm + 1)
 
     def permutation_test(self, permutation_num):
-        # TODO: add a test to check if "predict()" was ran already. else, give warning
+        """do docstring"""
+        # first, check if "predict()" was even ran
+        if sum(self.predicted) == 0:
+            warnings.warn("first run predict() on the data")
         permutations = np.zeros((self.data.shape[0], permutation_num - 1))
         for fold in range(self.splitter.n_splits):
             y_train = self.target[self.splits_['train'][fold]].copy()
@@ -144,4 +159,3 @@ class BBSPredictSingle:
 
         self.permutations_ = permutations
         return self.get_permutations_pvalue()
-
