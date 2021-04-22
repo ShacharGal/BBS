@@ -2,27 +2,45 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.model_selection import GroupKFold
-from sklearn.linear_model import LinearRegression, ElasticNetCV
 from sklearn.metrics import mean_squared_error
-from typing import Optional, Iterable, Any
+from typing import Iterable
 from scipy.stats import pearsonr
 import warnings
 
+#TODO: think about saving a model and using it on an individual subject
 
-glm = LinearRegression()
-elastic = ElasticNetCV()
 transformer = PCA()
 
 
+def match_dfs_by_ind(df_list, *target):
+    """
+    matches dataframes by their indices
+    returns all dataframes with the intersection of all indices
+    """
+    all_indices = [list(df.index) for df in df_list]
+    if target:
+        traget_df = target[0] # its ok because if target exists, i expect only one value.
+        all_indices.append(traget_df.index)
+    in_all = list(set(all_indices[0]).intersection(*all_indices))
+    if target:
+        return [df[df.index.isin(in_all)] for df in df_list], traget_df[traget_df.index.isin(in_all)]
+    else:
+        return [df[df.index.isin(in_all)] for df in df_list]
+
+
 def decompose(training_data, num_components: int) -> np.array:
-    """do docstring"""
+    """
+    reutrns a set number of priniciple components
+    """
     transformer.fit(training_data)
     components = transformer.components_.T[:, :num_components]
     return components
 
 
 def extract_features(train_data, test_data, components):
-    """do docstring"""
+    """
+    regresses components against individual data to yield components
+    """
     train_features = np.matmul(np.linalg.pinv(components), train_data.values.T).T
     test_features = np.matmul(np.linalg.pinv(components), test_data.values.T).T
     return train_features, test_features
@@ -30,7 +48,7 @@ def extract_features(train_data, test_data, components):
 
 class BBSpredict:
     """do docstring"""
-    def __init__(self, num_components: int, data: pd.DataFrame, target: Iterable, folds: int, groups: Iterable = None, model = glm):
+    def __init__(self, num_components: int, data: pd.DataFrame, target: Iterable, folds: int, model, groups: Iterable = None):
         """
         :param num_components: hi hi
         :param data:
@@ -43,20 +61,19 @@ class BBSpredict:
         self.splitter = GroupKFold(n_splits=folds)
         self.num_components = num_components
         self.model = model
-        # this should probably be done differently?
+
         if groups == None:
-            self.groups = np.arange(data.shape[0]) # each subject is a group, i.e, no grouping constrains on the splitter
+            self.groups = np.arange(len(self.target)) # each subject is a group, i.e, no grouping constrains on the splitter
         else:
             self.groups = groups
 
-        # gilad what do you think about this? is this good practice?
         self._validate_inputs()
 
         self.coefs = []
-        self.splits_ = {'train':[], 'test':[]}
-        self.features = {'train':[], 'test':[]}
+        self.splits_ = {'train': [], 'test': []}
+        self.features = {'train': [], 'test': []}
         self.components = []
-        self.predicted = np.zeros(data.shape[0])
+        self.predicted = np.zeros(len(target))
 
         self.stats = None # pearson r and mse for each iteration
         self.summary = None # mean and std for pearsons r and mse across folds
@@ -76,8 +93,6 @@ class BBSpredict:
 
     def calc_stats(self):
         """do docstring"""
-        # this is a method i would want to run after self.predict() finished running
-        # it should put values in self.stats and self.summary
         stats = {'r': [], 'mse': []}
         for fold in range(self.splitter.n_splits):
             real_values = self.target[self.splits_['test'][fold]]
@@ -92,7 +107,7 @@ class BBSpredict:
         n_perm = self.permutations_.shape[1]
         r_perm = np.zeros(n_perm)
         for perm in range(n_perm):
-            r_perm[perm] = pearsonr(self.permutations[:, perm], self.target)[0]
+            r_perm[perm] = pearsonr(self.permutations_[:, perm], self.target)[0]
 
         r_real = pearsonr(self.predicted, self.target)[0]
         # return the number of permutations equal or higher than the real results
@@ -104,12 +119,13 @@ class BBSpredict:
         # first, check if "predict()" was even ran
         if sum(self.predicted) == 0:
             warnings.warn("first run predict() on the data")
-        permutations = np.zeros((self.data.shape[0], permutation_num - 1))
+        # do permutation test
+        permutations = np.zeros((len(self.target), permutation_num - 1))
         for fold in range(self.splitter.n_splits):
             y_train = self.target[self.splits_['train'][fold]].copy()
             train_features = self.features['train'][fold]
             test_features = self.features['test'][fold]
-            for perm in range(permutation_num):
+            for perm in range(permutation_num-1):
                 np.random.shuffle(y_train)
                 self.model.fit(train_features, y_train)
                 permutations[self.splits_['test'][fold], perm] = self.model.predict(test_features)
@@ -126,47 +142,6 @@ class BBSPredictSingle(BBSpredict):
     coefs: list
     components: list
     predicted: np.array
-
-    def __init__(self, num_components: int, data: pd.DataFrame, target: Iterable, folds: int, groups: Iterable = None, model = glm):
-        """
-        :param num_components: hi hi
-        :param data:
-        :param target:
-        :param folds:
-        :param groups:
-        """
-        self.data = data
-        self.target = target
-        self.splitter = GroupKFold(n_splits=folds)
-        self.num_components = num_components
-        self.model = model
-        # this should probably be done differently?
-        if groups == None:
-            self.groups = np.arange(data.shape[0]) # each subject is a group, i.e, no grouping constrains on the splitter
-        else:
-            self.groups = groups
-
-        # gilad what do you think about this? is this good practice?
-        self._validate_inputs()
-
-        self.coefs = []
-        self.splits_ = {'train':[], 'test':[]}
-        self.features = {'train':[], 'test':[]}
-        self.components = []
-        self.predicted = np.zeros(data.shape[0])
-
-        self.stats = None # pearson r and mse for each iteration
-        self.summary = None # mean and std for pearsons r and mse across folds
-        self.contribution_map = None
-        self.permutations_ = None
-
-    def _validate_inputs(self):
-        if self.data.shape[0] != len(self.target):
-            warnings.warn("number of samples in data and target is not the same. please check your data.")
-        if self.data.shape[0] != len(self.groups):
-            warnings.warn("number of samples in data and 'groups' is not the same. please check your data.")
-        if self.num_components > self.data.shape[0]:
-            warnings.warn("requested number of components is larger than sample size. will result in error during pca")
 
     def predict(self):
         """do docstring"""
@@ -206,4 +181,64 @@ class BBSPredictSingle(BBSpredict):
             contribution_map += summed_weighted_task_comps
         self.contribution_map = contribution_map
 
-#class BBSpredictMulti(BBSPredictSingle):
+
+class BBSpredictMulti(BBSPredictSingle):
+    data: list # list of dataframes
+    target: Iterable
+    groups: Iterable
+
+    coefs: list
+    components: list
+    predicted: np.array
+
+    def __init__(self, num_components: int, data: list, target: Iterable, folds: int, model, final_feature_number: int, groups: Iterable = None, map_names = None):
+        super().__init__(num_components, data, target, folds, model, groups)
+        self.final_feature_number = final_feature_number
+        self.components = [[] for map in range(len(self.data))]  # each map's components wil be added to a specific list
+        self.map_names = map_names  # for documentation sake. should be a list of strings. optional
+        self.masks_per_fold = []
+
+    def corr_analysis(self, features, target):
+        feat_num = features.shape[1]
+        corrs = np.zeros(feat_num)
+        for feat in range(feat_num):
+            corrs[feat] = pearsonr(features[:, feat], target)[0]
+        mask = abs(corrs) >= np.sort(abs(corrs))[feat_num - self.final_feature_number]
+        return mask
+
+    def predict(self):
+        """do docstring"""
+        for fold, (train_indices, test_indices) in enumerate(self.splitter.split(self.data[0], self.target, self.groups)):
+            train_features = np.zeros([len(train_indices), self.num_components * len(self.data)])
+            test_features = np.zeros([len(test_indices), self.num_components * len(self.data)])
+            Y_train, Y_test = self.target[train_indices], self.target[test_indices]
+
+            for i in range(len(self.data)):
+                curr_data = self.data[i]
+
+                # get relevant data slices for train-test split
+                X_train, X_test = curr_data.iloc[train_indices, :], curr_data.iloc[test_indices, :]
+                # extract features
+                self.components[i].append(decompose(X_train, self.num_components))
+                curr_train_features, curr_test_features = extract_features(X_train, X_test, self.components[i][fold])
+                start = i * self.num_components
+                end = start + self.num_components
+                train_features[:, start:end] = curr_train_features
+                test_features[:, start:end] = curr_test_features
+
+            mask = self.corr_analysis(train_features, Y_train)
+            self.masks_per_fold.append(mask)
+
+            final_train_features = train_features[:, mask]
+            final_test_features = test_features[:, mask]
+
+            self.model.fit(final_train_features, Y_train)
+            self.predicted[test_indices] = self.model.predict(final_test_features)
+            # save some stuff
+            self.splits_['train'].append(train_indices)
+            self.splits_['test'].append(test_indices)
+            self.features['train'].append(final_train_features)
+            self.features['test'].append(final_test_features)
+            self.coefs.append(self.model.coef_)
+
+        self.calc_stats()
