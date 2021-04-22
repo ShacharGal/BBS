@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import bbs
 
-# read in data
 
 orig_mat = np.genfromtxt('../bbs_prediction/data/100_training/WM_09_s4_z_masked_pred.csv', delimiter=',')
 with open('../bbs_prediction/data/100_training/test_subjlist.txt', 'r') as f:
