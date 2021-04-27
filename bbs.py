@@ -6,10 +6,23 @@ from sklearn.metrics import mean_squared_error
 from typing import Iterable
 from scipy.stats import pearsonr
 import warnings
+import pickle
 
 #TODO: think about saving a model and using it on an individual subject
 
 transformer = PCA()
+
+def from_pickle(pickle_path):
+    with open(pickle_path, 'rb') as pickle_in:
+        model = pickle.load(pickle_in)
+    return model
+
+
+def to_pickle(bbs_object, pickle_path, with_data=False):
+    if not with_data:
+        bbs_object.data = []
+    with open(pickle_path, 'wb') as pickle_out:
+        pickle.dump(bbs_object, pickle_out)
 
 
 def match_dfs_by_ind(df_list, *target):
@@ -62,10 +75,10 @@ class BBSpredict:
         self.num_components = num_components
         self.model = model
 
-        if groups == None:
-            self.groups = np.arange(len(self.target)) # each subject is a group, i.e, no grouping constrains on the splitter
-        else:
+        if groups is not None:
             self.groups = groups
+        else:
+            self.groups = np.arange(len(self.target)) # each subject is a group, i.e, no grouping constrains on the splitter
 
         self._validate_inputs()
 
@@ -133,6 +146,8 @@ class BBSpredict:
         self.permutations_ = permutations
         return self.get_permutations_pvalue()
 
+
+
 class BBSPredictSingle(BBSpredict):
     """do docstring"""
     data: pd.DataFrame
@@ -162,11 +177,7 @@ class BBSPredictSingle(BBSpredict):
             self.features['test'].append(test_features)
             self.coefs.append(self.model.coef_)
 
-        # i want to asses the prediction accuracy, which will be done by calc_stats method.
-        # is this a good pythonic way to make sure stats are calculated after the prediction process is done?
         self.calc_stats()
-
-        # this is a similar thing - i want this to run after prediction is done
         self.build_contribution_map()
 
     def build_contribution_map(self):

@@ -36,3 +36,12 @@ bbs_multi.predict()
 print(bbs_multi.summary)
 
 bbs_multi.permutation_test(100)
+
+#######
+# test movie stuff
+
+orig_mat_pred_rest = np.genfromtxt('../Movie_vs_Rest/pregiction_data/EM_03_s4_z_masked_pred_Rest_3T.csv', delimiter=',')
+with open('/Volumes/homes/Shachar/Movie_vs_Rest/orig_data_new/EM_03_s4/subjlist.txt') as f:
+    subjects = [line.rstrip('\n') for line in f]
+
+
