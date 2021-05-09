@@ -12,13 +12,16 @@ import pickle
 
 transformer = PCA()
 
+
 def from_pickle(pickle_path):
+    """open a bbs object that was pickled"""
     with open(pickle_path, 'rb') as pickle_in:
         model = pickle.load(pickle_in)
     return model
 
 
 def to_pickle(bbs_object, pickle_path, with_data=False):
+    """save a bbs object to pickle"""
     if not with_data:
         bbs_object.data = []
     with open(pickle_path, 'wb') as pickle_out:
@@ -43,7 +46,7 @@ def match_dfs_by_ind(df_list, *target):
 
 def decompose(training_data, num_components: int) -> np.array:
     """
-    reutrns a set number of priniciple components
+    returns a set number of principle components
     """
     transformer.fit(training_data)
     components = transformer.components_.T[:, :num_components]
@@ -60,15 +63,18 @@ def extract_features(train_data, test_data, components):
 
 
 class BBSpredict:
-    """do docstring"""
+    """the base class for bbs models"""
     def __init__(self, num_components: int, data: pd.DataFrame, target: Iterable, folds: int, model, groups: Iterable = None):
         """
-        :param num_components: hi hi
-        :param data:
-        :param target:
-        :param folds:
-        :param groups:
+
+        @param num_components: number of components to extract (will also be the number of features)
+        @param data: a participantsXdata_size dataframe
+        @param target: the score to predict, for all participants
+        @param folds: number of cross-validation iterations by which to perform prediction
+        @param model: an sklearn model object (such as LinearRegression)
+        @param groups: information regarding dependence of samples (such as family relation between participants).
         """
+
         self.data = data
         self.target = target
         self.splitter = GroupKFold(n_splits=folds)
@@ -105,7 +111,7 @@ class BBSpredict:
             warnings.warn("requested number of components is larger than sample size. will result in error during pca")
 
     def calc_stats(self):
-        """do docstring"""
+        """calculate measurements of prediction quality"""
         stats = {'r': [], 'mse': []}
         for fold in range(self.splitter.n_splits):
             real_values = self.target[self.splits_['test'][fold]]
@@ -116,7 +122,7 @@ class BBSpredict:
         self.summary = self.stats.describe().loc[['mean', 'std'], :]
 
     def get_permutations_pvalue(self):
-        """do docstring"""
+        """use the permutation data to yield significance of prediction"""
         n_perm = self.permutations_.shape[1]
         r_perm = np.zeros(n_perm)
         for perm in range(n_perm):
@@ -128,7 +134,7 @@ class BBSpredict:
         return (np.sum(r_perm >= r_real) + 1) / (n_perm + 1)
 
     def permutation_test(self, permutation_num):
-        """do docstring"""
+        """perform permutation test to get recreate a null distribution of models"""
         # first, check if "predict()" was even ran
         if sum(self.predicted) == 0:
             warnings.warn("first run predict() on the data")
@@ -147,9 +153,10 @@ class BBSpredict:
         return self.get_permutations_pvalue()
 
 
-
 class BBSPredictSingle(BBSpredict):
-    """do docstring"""
+    """
+    a class to perform prediction using the bbs pipeline with a single map as an input for each participant
+    """
     data: pd.DataFrame
     target: Iterable
     groups: Iterable
@@ -159,7 +166,7 @@ class BBSPredictSingle(BBSpredict):
     predicted: np.array
 
     def predict(self):
-        """do docstring"""
+        """predict individual traits from a single map for each participant"""
         for fold, (train_indices, test_indices) in enumerate(self.splitter.split(self.data, self.target, self.groups)):
             # get relevent data slices for train-test split
             X_train, X_test = self.data.iloc[train_indices, :], self.data.iloc[test_indices, :]
@@ -181,7 +188,7 @@ class BBSPredictSingle(BBSpredict):
         self.build_contribution_map()
 
     def build_contribution_map(self):
-        """do docstring"""
+        """create summed weighted maps that show each vertex's contribution to the prediction model"""
         contribution_map = np.zeros((self.data.shape[1]))
         for fold in range(self.splitter.n_splits):
             # weight components with their related beta values
@@ -194,6 +201,10 @@ class BBSPredictSingle(BBSpredict):
 
 
 class BBSpredictMulti(BBSPredictSingle):
+    """
+    a class to perform prediction using the bbs pipeline with multiple maps as an input for each participant
+    """
+
     data: list # list of dataframes
     target: Iterable
     groups: Iterable
@@ -203,6 +214,16 @@ class BBSpredictMulti(BBSPredictSingle):
     predicted: np.array
 
     def __init__(self, num_components: int, data: list, target: Iterable, folds: int, model, final_feature_number: int, groups: Iterable = None, map_names = None):
+        """
+        @param num_components: number of components to extract from each data-set in each fold
+        @param data: a list of participantsXmap_size dataframes.
+        @param target: the score to predict, for all participants
+        @param folds: number of cross-validation iterations by which to perform prediction
+        @param model: an sklearn model object (such as LinearRegression or ElasticNet)
+        @param final_feature_number:
+        @param groups: information regarding dependence of samples (such as family relation between participants).
+        @param map_names: for documentation's sake
+        """
         super().__init__(num_components, data, target, folds, model, groups)
         self.final_feature_number = final_feature_number
         self.components = [[] for map in range(len(self.data))]  # each map's components wil be added to a specific list
@@ -218,7 +239,7 @@ class BBSpredictMulti(BBSPredictSingle):
         return mask
 
     def predict(self):
-        """do docstring"""
+        """predict individual traits from multiple maps for each participant"""
         for fold, (train_indices, test_indices) in enumerate(self.splitter.split(self.data[0], self.target, self.groups)):
             train_features = np.zeros([len(train_indices), self.num_components * len(self.data)])
             test_features = np.zeros([len(test_indices), self.num_components * len(self.data)])
