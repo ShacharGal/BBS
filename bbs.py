@@ -7,6 +7,8 @@ from typing import Iterable
 from scipy.stats import pearsonr
 import warnings
 import pickle
+import nibabel as nib
+import sys
 
 #TODO: think about saving a model and using it on an individual subject
 
@@ -198,6 +200,14 @@ class BBSPredictSingle(BBSpredict):
             # add the weighted components to the rest of the weighted components.
             contribution_map += summed_weighted_task_comps
         self.contribution_map = contribution_map
+
+    def save_contribution_map(self, filename):
+        template = nib.load(f'{sys.path[0]}/misc/Smask.dtseries.nii')
+        mask = np.asanyarray(template.dataobj)
+        mask[mask == 1] = self.contribution_map
+        to_save = nib.cifti2.cifti2.Cifti2Image(mask, template.header)
+        nib.save(to_save, f'{filename}.dtseries.nii')
+
 
 
 class BBSpredictMulti(BBSPredictSingle):
